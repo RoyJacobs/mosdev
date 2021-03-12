@@ -1,7 +1,7 @@
 use crate::core::parser::config_map::ConfigMap;
 use crate::core::parser::mnemonic::Mnemonic;
 use crate::core::parser::{Identifier, IdentifierPath, ParseError};
-use codemap::{CodeMap, Span};
+use codemap::{CodeMap, File, Span};
 use itertools::Itertools;
 use std::cell::RefCell;
 use std::fmt::{Binary, Debug, Display, Formatter, LowerHex};
@@ -20,6 +20,7 @@ pub type ArgItem = (Located<Expression>, Option<Located<char>>);
 /// The result of parsing
 pub struct ParseTree {
     code_map: CodeMap,
+    files: Vec<Arc<File>>,
     tokens: Vec<Token>,
 }
 
@@ -30,12 +31,20 @@ impl Debug for ParseTree {
 }
 
 impl ParseTree {
-    pub fn new(code_map: CodeMap, tokens: Vec<Token>) -> Self {
-        Self { code_map, tokens }
+    pub fn new(code_map: CodeMap, files: Vec<Arc<File>>, tokens: Vec<Token>) -> Self {
+        Self {
+            code_map,
+            files,
+            tokens,
+        }
     }
 
     pub fn code_map(&self) -> &CodeMap {
         &self.code_map
+    }
+
+    pub fn files(&self) -> &Vec<Arc<File>> {
+        &self.files
     }
 
     pub fn tokens(&self) -> &[Token] {
@@ -48,6 +57,9 @@ impl ParseTree {
 pub struct State {
     /// Codemap
     pub code_map: Rc<RefCell<CodeMap>>,
+
+    /// All files that were parsed
+    pub files: Rc<RefCell<Vec<Arc<codemap::File>>>>,
 
     /// Which file are we parsing?
     pub file: Arc<codemap::File>,
@@ -69,6 +81,7 @@ impl State {
 
         Self {
             code_map: Rc::new(RefCell::new(code_map)),
+            files: Rc::new(RefCell::new(vec![file.clone()])),
             file,
             errors: Rc::new(RefCell::new(Vec::new())),
             ignore_next_error: Rc::new(RefCell::new(false)),

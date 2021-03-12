@@ -832,12 +832,14 @@ pub fn expression(input: LocatedSpan) -> IResult<Located<Expression>> {
 pub fn parse<'a>(filename: &'a Path, source: &'a str) -> (Arc<ParseTree>, Option<MosError>) {
     let state = State::new(filename.as_os_str().to_string_lossy(), source);
     let code_map = state.code_map.clone();
+    let files = state.files.clone();
     let errors = state.errors.clone();
     let input = LocatedSpan::new_extra(source, state);
     let (_, tokens) = all_consuming(source_file)(input).expect("parser cannot fail");
 
     let code_map = Rc::try_unwrap(code_map).ok().unwrap().into_inner();
-    let tree = Arc::new(ParseTree::new(code_map, tokens));
+    let files = Rc::try_unwrap(files).ok().unwrap().into_inner();
+    let tree = Arc::new(ParseTree::new(code_map, files, tokens));
 
     let errors = Rc::try_unwrap(errors).ok().unwrap().into_inner();
     if errors.is_empty() {

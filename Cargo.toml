@@ -15,6 +15,7 @@ clap = "3.0.0-beta.2"
 codemap = "0.1"
 crossbeam-channel = "0.5"
 derive_more = "0.99"
+dissimilar = "1"
 fs-err = "2"
 itertools = "0.10"
 log = { version = "0.4", features = ["max_level_trace", "release_max_level_info"] }

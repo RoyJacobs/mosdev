@@ -163,6 +163,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dissimilar"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc4b29f4b9bb94bf267d57269fd0706d343a160937108e9619fe380645428abb"
+
+[[package]]
 name = "either"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -354,6 +360,7 @@ dependencies = [
  "codemap",
  "crossbeam-channel",
  "derive_more",
+ "dissimilar",
  "fs-err",
  "itertools",
  "log",
