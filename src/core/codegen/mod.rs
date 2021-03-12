@@ -6,12 +6,12 @@ use fs_err as fs;
 use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 
 pub use program_counter::*;
 pub use segment::*;
-use std::path::PathBuf;
 pub use symbol_table::*;
 
 mod program_counter;
@@ -181,19 +181,26 @@ pub enum EmitResult {
     TryLaterNoData,
 }
 
-#[derive(Debug)]
-pub enum Emittable<'a> {
-    Single(Option<ProgramCounter>, &'a Token),
-    Label(&'a Located<Identifier>),
+#[derive(Clone, Debug)]
+pub enum Emittable {
+    Single(Option<ProgramCounter>, Token),
+    Label(Located<Identifier>),
     /// (Name of the scope, the emittables in the scope)
-    Nested(&'a Identifier, Vec<Emittable<'a>>),
-    SegmentDefinition(ConfigMap<'a>),
-    Segment(&'a Identifier, Span, Option<Box<Emittable<'a>>>),
+    Nested(Identifier, Vec<Emittable>),
+    SegmentDefinition(ConfigMap),
+    Segment(Identifier, Span, Option<Box<Emittable>>),
     If(
-        &'a Located<Expression>,
-        Option<Box<Emittable<'a>>>,
-        Option<Box<Emittable<'a>>>,
+        Located<Expression>,
+        Option<Box<Emittable>>,
+        Option<Box<Emittable>>,
     ),
+    MacroInvocation(Identifier, Box<Emittable>, Vec<MacroArgument>),
+}
+
+#[derive(Clone, Debug)]
+pub struct MacroArgument {
+    id: Identifier,
+    expr: Expression,
 }
 
 pub struct CodegenContext {
@@ -759,11 +766,11 @@ impl CodegenContext {
         }
     }
 
-    fn emit_emittable<'a>(
+    fn emit_emittable(
         &mut self,
-        emittable: Emittable<'a>,
+        emittable: Emittable,
         error_on_failure: bool,
-    ) -> Option<Emittable<'a>> {
+    ) -> Option<Emittable> {
         log::trace!("Processing emittable: {:?}", emittable);
         let pc = self.segments.try_current().map(|seg| seg.current_pc());
         match emittable {
@@ -847,7 +854,7 @@ impl CodegenContext {
                 }
             }
             Emittable::Nested(scope_name, inner) => {
-                self.symbols.enter(scope_name);
+                self.symbols.enter(&scope_name);
                 if let Some(pc) = self.segments.try_current().map(|seg| seg.current_pc()) {
                     self.symbols
                         .register("-", Symbol::System(pc.as_i64()), None, true)
@@ -870,7 +877,7 @@ impl CodegenContext {
             }
             Emittable::Segment(segment_name, span, inner) => {
                 let prev_segment = self.segments.current_segment_name();
-                match self.segments.try_get(segment_name) {
+                match self.segments.try_get(&segment_name) {
                     Some(_) => {
                         log::trace!("Setting segment to '{:?}'", &segment_name);
                         self.segments.set_current(Some(segment_name.clone()));
@@ -929,10 +936,43 @@ impl CodegenContext {
                     }
                 }
             }
+            Emittable::MacroInvocation(scope_name, block, args) => {
+                self.symbols.enter(&scope_name);
+
+                for arg in args.iter() {
+                    match self.evaluate(&arg.expr, pc, error_on_failure) {
+                        Ok(value) => {
+                            if let Some(value) = value {
+                                self.symbols
+                                    .register(&arg.id, Symbol::Constant(value), None, true)
+                                    .unwrap();
+                            }
+                        }
+                        Err(e) => {
+                            self.push_error(e);
+                        }
+                    }
+                }
+                let result = if self
+                    .emit_emittable(
+                        Emittable::Nested(scope_name.clone(), vec![*block.clone()]),
+                        error_on_failure,
+                    )
+                    .is_some()
+                {
+                    // We've received an emittable to handle later, so apparently it wasn't successful
+                    Some(Emittable::MacroInvocation(scope_name, block, args))
+                } else {
+                    // Done!
+                    None
+                };
+                self.symbols.leave();
+                result
+            }
         }
     }
 
-    fn generate_emittables<'a>(&mut self, tokens: &'a [Token]) -> Vec<Emittable<'a>> {
+    fn generate_emittables(&mut self, tokens: &[Token]) -> Vec<Emittable> {
         tokens
             .iter()
             .map(|tok| self.generate_emittables_for_token(tok))
@@ -940,7 +980,7 @@ impl CodegenContext {
             .collect_vec()
     }
 
-    fn generate_emittables_for_token<'a>(&mut self, token: &'a Token) -> Vec<Emittable<'a>> {
+    fn generate_emittables_for_token(&mut self, token: &Token) -> Vec<Emittable> {
         match &token {
             Token::Definition { id, value, .. } => {
                 let definition_type = id.data.value();
@@ -967,7 +1007,11 @@ impl CodegenContext {
                     Some(b) => Some(Box::new(self.create_block_emittable(&id.data, &b.inner))),
                     None => None,
                 };
-                vec![Emittable::Segment(&id.data, id.span, block_emittable)]
+                vec![Emittable::Segment(
+                    id.data.clone(),
+                    id.span,
+                    block_emittable,
+                )]
             }
             Token::Braces { block, scope } => {
                 vec![self.create_block_emittable(&scope, &block.inner)]
@@ -977,11 +1021,11 @@ impl CodegenContext {
                     Some(block) => {
                         // The label contains a code block, so also emit the inner data
                         let braces_emittable = self.create_block_emittable(&id.data, &block.inner);
-                        vec![Emittable::Label(id), braces_emittable]
+                        vec![Emittable::Label(id.clone()), braces_emittable]
                     }
                     None => {
                         // No braces, so just emit the label
-                        vec![Emittable::Label(id)]
+                        vec![Emittable::Label(id.clone())]
                     }
                 }
             }
@@ -998,9 +1042,50 @@ impl CodegenContext {
                     Some(e) => Some(Box::new(self.create_block_emittable(else_scope, &e.inner))),
                     None => None,
                 };
-                vec![Emittable::If(value, if_, else_)]
+                vec![Emittable::If(value.clone(), if_, else_)]
             }
-            _ => vec![Emittable::Single(None, &token)],
+            Token::MacroDefinition {
+                id, block, args, ..
+            } => {
+                let args = args
+                    .iter()
+                    .map(|(arg, _)| match &arg.data {
+                        Expression::Factor { factor, .. } => match &factor.data {
+                            ExpressionFactor::IdentifierValue { path, .. } => {
+                                path.data.single().clone()
+                            }
+                            _ => panic!(),
+                        },
+                        _ => panic!(),
+                    })
+                    .collect();
+
+                let b: Block = block.clone();
+                self.symbols
+                    .register(&id.data, Symbol::Macro(b, args), &id.span, false)
+                    .unwrap();
+                vec![]
+            }
+            Token::MacroInvocation { name, args, .. } => {
+                let (block, arg_names) = match self.symbols.lookup(&name.data, true) {
+                    Some(Symbol::Macro(block, arg_names)) => {
+                        (block.inner.clone(), arg_names.clone())
+                    }
+                    _ => panic!(),
+                };
+
+                let e = Box::new(self.create_block_emittable(&name.data, &block));
+                let args = args
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (expr, _))| MacroArgument {
+                        id: arg_names[index].clone(),
+                        expr: expr.data.clone(),
+                    })
+                    .collect();
+                vec![Emittable::MacroInvocation(name.data.clone(), e, args)]
+            }
+            _ => vec![Emittable::Single(None, token.clone())],
         }
     }
 
@@ -1027,13 +1112,9 @@ impl CodegenContext {
         Ok(())
     }
 
-    fn create_block_emittable<'a>(
-        &mut self,
-        scope_name: &'a Identifier,
-        ast: &'a [Token],
-    ) -> Emittable<'a> {
+    fn create_block_emittable(&mut self, scope_name: &Identifier, ast: &[Token]) -> Emittable {
         self.symbols.enter(scope_name.clone());
-        let e = Emittable::Nested(scope_name, self.generate_emittables(ast));
+        let e = Emittable::Nested(scope_name.clone(), self.generate_emittables(ast));
         self.symbols.leave();
         e
     }
@@ -1127,6 +1208,7 @@ pub fn codegen(tree: Arc<ParseTree>, options: CodegenOptions) -> MosResult<Codeg
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::enable_default_tracing;
     use std::path::Path;
 
     type TestResult = MosResult<()>;
@@ -1555,8 +1637,12 @@ mod tests {
 
     #[test]
     fn can_use_macros() -> TestResult {
-        let ctx = test_codegen(".macro foo { nop }\nfoo()\nfoo()")?;
-        assert_eq!(ctx.segments().current().range_data(), vec![0xea, 0xea]);
+        enable_default_tracing();
+        let ctx = test_codegen(".macro foo(val) { lda #val }\nfoo(1)\nfoo(2)")?;
+        assert_eq!(
+            ctx.segments().current().range_data(),
+            vec![0xa9, 1, 0xa9, 2]
+        );
         Ok(())
     }
 

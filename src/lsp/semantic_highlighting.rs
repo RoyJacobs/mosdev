@@ -279,7 +279,13 @@ fn emit_semantic(token: &Token) -> SemTokBuilder {
                 None => b,
             }
         }
-        Token::MacroDefinition { tag, id, block } => b.keyword(tag).identifier(id).block(block),
+        Token::MacroDefinition {
+            tag,
+            id,
+            args,
+            block,
+            ..
+        } => b.keyword(tag).identifier(id).args(args).block(block),
         Token::MacroInvocation { name, args, .. } => {
             SemTokBuilder::new().identifier(name).args(args)
         }

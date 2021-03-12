@@ -392,10 +392,20 @@ fn instruction(input: LocatedSpan) -> IResult<Token> {
 /// Tries to parse a macro definition
 fn macro_definition(input: LocatedSpan) -> IResult<Token> {
     map_once(
-        tuple((ws(tag_no_case(".macro")), ws(identifier_name), block)),
-        move |(tag, id, block)| Token::MacroDefinition {
+        tuple((
+            ws(tag_no_case(".macro")),
+            ws(identifier_name),
+            ws(char('(')),
+            opt(arg_list),
+            ws(char(')')),
+            block,
+        )),
+        move |(tag, id, lparen, args, rparen, block)| Token::MacroDefinition {
             tag: tag.map_into(|_| ".macro".into()),
             id,
+            lparen,
+            args: args.unwrap_or_default(),
+            rparen,
             block,
         },
     )(input)
@@ -957,7 +967,8 @@ mod test {
 
     #[test]
     fn parse_macro() {
-        check(".macro foo { nop }", ".MACRO foo { NOP }");
+        check(".macro foo() { nop }", ".MACRO foo() { NOP }");
+        check(".macro foo(val) { nop }", ".MACRO foo(val) { NOP }");
         check("foo()", "foo()");
     }
 

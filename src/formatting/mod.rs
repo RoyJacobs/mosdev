@@ -308,11 +308,21 @@ impl CodeFormatter {
                 .fmt(self, colon)
                 .spc()
                 .fmt(self, block),
-            Token::MacroDefinition { tag, id, block } => Fmt::new()
+            Token::MacroDefinition {
+                tag,
+                id,
+                lparen,
+                rparen,
+                args,
+                block,
+            } => Fmt::new()
                 .push(&tag.data)
                 .spc()
                 .fmt(self, id)
                 .spc()
+                .fmt(self, lparen)
+                .fmt(self, args)
+                .fmt(self, rparen)
                 .fmt(self, block),
             Token::MacroInvocation {
                 name,

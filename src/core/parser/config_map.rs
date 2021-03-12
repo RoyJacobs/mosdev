@@ -7,15 +7,15 @@ use std::collections::{HashMap, HashSet};
 /// A ConfigMap stores generic key-value pairs that are used for things like segment definitions
 ///
 /// Internally this is just a HashMap storing actual [Token]s, but provides a few convenience methods on top of that.
-#[derive(Debug)]
-pub struct ConfigMap<'a> {
+#[derive(Clone, Debug)]
+pub struct ConfigMap {
     span: Span,
-    items: HashMap<String, &'a Token>,
+    items: HashMap<String, Token>,
 }
 
-impl<'a> ConfigMap<'a> {
+impl ConfigMap {
     /// Create a new ConfigMap based on the provided [Token::ConfigPair] and [Token::EolTrivia] tokens.
-    pub fn new(span: Span, items: &'a [Token]) -> Self {
+    pub fn new(span: Span, items: &[Token]) -> Self {
         let items = items
             .iter()
             .filter_map(|pair| {
@@ -26,7 +26,7 @@ impl<'a> ConfigMap<'a> {
 
                 kvp.map(|(k, v)| {
                     let k = k.clone();
-                    (k, &v.data)
+                    (k, v.data.clone())
                 })
             })
             .collect();
@@ -40,17 +40,17 @@ impl<'a> ConfigMap<'a> {
     }
 
     /// Get a reference to a key that must exist.
-    pub fn value<'b>(&'b self, key: &'b str) -> &'b Token {
+    pub fn value(&self, key: &str) -> &Token {
         self.try_value(key).unwrap()
     }
 
     /// Get a reference to a key that may not exist.
-    pub fn try_value<'b>(&'b self, key: &'b str) -> Option<&&'a Token> {
+    pub fn try_value(&self, key: &str) -> Option<&Token> {
         self.items.get(key)
     }
 
     /// Get a reference to the [IdentifierPath] contained within a key that must exist.
-    pub fn value_as_identifier_path<'b>(&'b self, key: &'b str) -> &'b IdentifierPath {
+    pub fn value_as_identifier_path(&self, key: &str) -> &IdentifierPath {
         match self.value(key).as_factor() {
             ExpressionFactor::IdentifierValue { path, .. } => &path.data,
             _ => panic!(),
@@ -58,7 +58,7 @@ impl<'a> ConfigMap<'a> {
     }
 
     /// Get a reference to the [IdentifierPath] contained within a key that may not exist.
-    pub fn try_value_as_identifier_path<'b>(&'b self, key: &'b str) -> Option<&'b IdentifierPath> {
+    pub fn try_value_as_identifier_path(&self, key: &str) -> Option<&IdentifierPath> {
         match self.try_value(key) {
             Some(lt) => match lt.try_as_factor() {
                 Some(ExpressionFactor::IdentifierValue { path, .. }) => Some(&path.data),
@@ -69,7 +69,7 @@ impl<'a> ConfigMap<'a> {
     }
 }
 
-impl<'a> PartialEq for ConfigMap<'a> {
+impl PartialEq for ConfigMap {
     fn eq(&self, other: &Self) -> bool {
         self.items
             .iter()

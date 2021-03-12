@@ -143,7 +143,7 @@ impl Display for IndexRegister {
 }
 
 /// A 6502 instruction
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Instruction {
     pub mnemonic: Located<Mnemonic>,
     /// The operand is optional because some instructions (e.g. `NOP`) don't have an operand.
@@ -166,7 +166,7 @@ pub enum AddressingMode {
 }
 
 /// The operand of an instruction
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Operand {
     pub expr: Located<Expression>,
     pub lchar: Option<Located<char>>,
@@ -176,7 +176,7 @@ pub struct Operand {
 }
 
 /// The optional register suffix of an operand
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RegisterSuffix {
     pub comma: Located<char>,
     pub register: Located<IndexRegister>,
@@ -274,7 +274,7 @@ impl Display for BinaryOp {
 }
 
 /// A binary expression of the form `lhs op rhs`
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BinaryExpression {
     pub op: Located<BinaryOp>,
     pub lhs: Box<Located<Expression>>,
@@ -282,7 +282,7 @@ pub struct BinaryExpression {
 }
 
 /// A factor that can be used on either side of an expression operation
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ExpressionFactor {
     CurrentProgramCounter(Located<char>),
     ExprParens {
@@ -307,7 +307,7 @@ pub enum ExpressionFactor {
 }
 
 /// A wrapper that stores the original number string and its radix, so that any zero-prefixes are kept
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Number {
     radix: u32,
     data: String,
@@ -362,7 +362,7 @@ impl Display for ExpressionFactorFlags {
 }
 
 /// An expression consists of one or more factors, possibly contained within a binary (sub)expression
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expression {
     BinaryExpression(BinaryExpression),
     Factor {
@@ -430,7 +430,7 @@ impl Display for DataSize {
 }
 
 /// A block of tokens
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Block {
     pub lparen: Located<char>,
     pub inner: Vec<Token>,
@@ -438,7 +438,7 @@ pub struct Block {
 }
 
 /// Tokens that, together, make up all possible source text
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     Align {
         tag: Located<String>,
@@ -489,6 +489,9 @@ pub enum Token {
     MacroDefinition {
         tag: Located<String>,
         id: Located<Identifier>,
+        lparen: Located<char>,
+        args: Vec<ArgItem>,
+        rparen: Located<char>,
         block: Block,
     },
     MacroInvocation {
@@ -874,8 +877,24 @@ impl Display for Token {
                 };
                 write!(f, "{}{}{}", id, colon, block)
             }
-            Token::MacroDefinition { tag, id, block } => {
-                write!(f, "{}{}{}", format!("{}", tag).to_uppercase(), id, block)
+            Token::MacroDefinition {
+                tag,
+                id,
+                lparen,
+                args,
+                rparen,
+                block,
+            } => {
+                write!(
+                    f,
+                    "{}{}{}{}{}{}",
+                    format!("{}", tag).to_uppercase(),
+                    id,
+                    lparen,
+                    format_arglist(args),
+                    rparen,
+                    block
+                )
             }
             Token::MacroInvocation {
                 name,
