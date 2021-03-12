@@ -279,12 +279,9 @@ fn emit_semantic(token: &Token) -> SemTokBuilder {
                 None => b,
             }
         }
-        Token::VariableDefinition { ty, id, value, .. } => {
-            let token_type = match &ty.data {
-                VariableType::Constant => TokenType::Constant,
-                VariableType::Variable => TokenType::Variable,
-            };
-            b.keyword(ty).identifier(id).push(value, token_type)
+        Token::MacroDefinition { tag, id, block } => b.keyword(tag).identifier(id).block(block),
+        Token::MacroInvocation { name, args, .. } => {
+            SemTokBuilder::new().identifier(name).args(args)
         }
         Token::ProgramCounterDefinition { star, value, .. } => {
             b.push(star, TokenType::Keyword).expression(&value.data)
@@ -295,6 +292,13 @@ fn emit_semantic(token: &Token) -> SemTokBuilder {
                 Some(block) => b.block(block),
                 None => b,
             }
+        }
+        Token::VariableDefinition { ty, id, value, .. } => {
+            let token_type = match &ty.data {
+                VariableType::Constant => TokenType::Constant,
+                VariableType::Variable => TokenType::Variable,
+            };
+            b.keyword(ty).identifier(id).push(value, token_type)
         }
     }
 }

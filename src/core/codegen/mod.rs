@@ -1554,6 +1554,13 @@ mod tests {
     }
 
     #[test]
+    fn can_use_macros() -> TestResult {
+        let ctx = test_codegen(".macro foo { nop }\nfoo()\nfoo()")?;
+        assert_eq!(ctx.segments().current().range_data(), vec![0xea, 0xea]);
+        Ok(())
+    }
+
+    #[test]
     fn error_unknown_identifier() {
         let err = test_codegen(".byte foo\n.byte foo2").err().unwrap();
         assert_eq!(format!("{}", err), "test.asm:1:7: error: unknown identifier: foo\ntest.asm:2:7: error: unknown identifier: foo2");

@@ -308,6 +308,22 @@ impl CodeFormatter {
                 .fmt(self, colon)
                 .spc()
                 .fmt(self, block),
+            Token::MacroDefinition { tag, id, block } => Fmt::new()
+                .push(&tag.data)
+                .spc()
+                .fmt(self, id)
+                .spc()
+                .fmt(self, block),
+            Token::MacroInvocation {
+                name,
+                lparen,
+                args,
+                rparen,
+            } => Fmt::new()
+                .fmt(self, name)
+                .fmt(self, lparen)
+                .fmt(self, args)
+                .fmt(self, rparen),
             Token::ProgramCounterDefinition { star, eq, value } => Fmt::new()
                 .push(&star.data.to_string())
                 .spc()

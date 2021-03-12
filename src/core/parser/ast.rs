@@ -486,6 +486,17 @@ pub enum Token {
         colon: Located<char>,
         block: Option<Block>,
     },
+    MacroDefinition {
+        tag: Located<String>,
+        id: Located<Identifier>,
+        block: Block,
+    },
+    MacroInvocation {
+        name: Located<Identifier>,
+        lparen: Located<char>,
+        args: Vec<ArgItem>,
+        rparen: Located<char>,
+    },
     ProgramCounterDefinition {
         star: Located<char>,
         eq: Located<char>,
@@ -523,6 +534,8 @@ impl Token {
             Token::Instruction(i) => &i.mnemonic.trivia,
             Token::Include { tag, .. } => &tag.trivia,
             Token::Label { id, .. } => &id.trivia,
+            Token::MacroDefinition { tag, .. } => &tag.trivia,
+            Token::MacroInvocation { name, .. } => &name.trivia,
             Token::ProgramCounterDefinition { star, .. } => &star.trivia,
             Token::Segment { tag, .. } => &tag.trivia,
             Token::VariableDefinition { ty, .. } => &ty.trivia,
@@ -860,6 +873,17 @@ impl Display for Token {
                     None => "".to_string(),
                 };
                 write!(f, "{}{}{}", id, colon, block)
+            }
+            Token::MacroDefinition { tag, id, block } => {
+                write!(f, "{}{}{}", format!("{}", tag).to_uppercase(), id, block)
+            }
+            Token::MacroInvocation {
+                name,
+                lparen,
+                args,
+                rparen,
+            } => {
+                write!(f, "{}{}{}{}", name, lparen, format_arglist(args), rparen)
             }
             Token::ProgramCounterDefinition { star, eq, value } => {
                 write!(f, "{}{}{}", star, eq, value)

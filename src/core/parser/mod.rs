@@ -389,6 +389,36 @@ fn instruction(input: LocatedSpan) -> IResult<Token> {
     ))(input)
 }
 
+/// Tries to parse a macro definition
+fn macro_definition(input: LocatedSpan) -> IResult<Token> {
+    map_once(
+        tuple((ws(tag_no_case(".macro")), ws(identifier_name), block)),
+        move |(tag, id, block)| Token::MacroDefinition {
+            tag: tag.map_into(|_| ".macro".into()),
+            id,
+            block,
+        },
+    )(input)
+}
+
+/// Tries to parse a macro invocation
+fn macro_invocation(input: LocatedSpan) -> IResult<Token> {
+    map_once(fn_call, |f| match f.data {
+        ExpressionFactor::FunctionCall {
+            name,
+            lparen,
+            args,
+            rparen,
+        } => Token::MacroInvocation {
+            name,
+            lparen,
+            args,
+            rparen,
+        },
+        _ => panic!(),
+    })(input)
+}
+
 /// When encountering an error, try to eat enough characters so that parsing may continue from a relatively clean state again
 fn error(input: LocatedSpan) -> IResult<Token> {
     map_once(
@@ -594,6 +624,8 @@ fn statement(input: LocatedSpan) -> IResult<Token> {
         const_definition,
         pc_definition,
         config_definition,
+        macro_definition,
+        macro_invocation,
         label,
         data,
         segment,
@@ -921,6 +953,12 @@ mod test {
     fn parse_identifier_scopes() {
         check("lda -", "LDA -");
         check("lda   super.+", "LDA   super.+");
+    }
+
+    #[test]
+    fn parse_macro() {
+        check(".macro foo { nop }", ".MACRO foo { NOP }");
+        check("foo()", "foo()");
     }
 
     #[test]
